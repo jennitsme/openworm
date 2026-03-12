@@ -9,19 +9,34 @@ app.use(cors());
 app.use(express.json({ limit: "2mb" }));
 
 const dataDir = path.join(process.cwd(), "data");
-const dataFile = path.join(dataDir, "deployments.json");
+const deployFile = path.join(dataDir, "deployments.json");
+const logsFile = path.join(dataDir, "logs.json");
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 let deployments: { manifest: any; ts: number }[] = [];
-if (fs.existsSync(dataFile)) {
+let logs: { ts: number; level: string; message: string; manifest?: string | null }[] = [];
+if (fs.existsSync(deployFile)) {
   try {
-    deployments = JSON.parse(fs.readFileSync(dataFile, "utf-8"));
+    deployments = JSON.parse(fs.readFileSync(deployFile, "utf-8"));
   } catch (_) {
     deployments = [];
   }
 }
+if (fs.existsSync(logsFile)) {
+  try {
+    logs = JSON.parse(fs.readFileSync(logsFile, "utf-8"));
+  } catch (_) {
+    logs = [];
+  }
+}
 
 function persist() {
-  fs.writeFileSync(dataFile, JSON.stringify(deployments, null, 2), "utf-8");
+  fs.writeFileSync(deployFile, JSON.stringify(deployments, null, 2), "utf-8");
+  fs.writeFileSync(logsFile, JSON.stringify(logs.slice(-500), null, 2), "utf-8");
+}
+
+function addLog(level: string, message: string, manifest?: string | null) {
+  logs.push({ ts: Date.now(), level, message, manifest: manifest ?? null });
+  persist();
 }
 
 app.get("/health", (_req, res) => {
@@ -33,7 +48,7 @@ app.get("/deployments", (_req, res) => {
 });
 
 app.get("/logs", (_req, res) => {
-  res.json({ logs: deployments.map((d) => ({ name: d.manifest?.name, ts: d.ts })) });
+  res.json({ logs });
 });
 
 app.post("/deploy", (req, res) => {
@@ -41,9 +56,11 @@ app.post("/deploy", (req, res) => {
     const manifest = ManifestSchema.parse(req.body?.manifest || req.body);
     const record = { manifest, ts: Date.now() };
     deployments.push(record);
+    addLog("info", `deploy ${manifest.name}`, manifest.name);
     persist();
     return res.json({ status: "ok", received: manifest.name, ts: record.ts });
   } catch (err: any) {
+    addLog("error", `deploy failed: ${err.message}`);
     return res.status(400).json({ error: err.message, issues: err.issues || null });
   }
 });

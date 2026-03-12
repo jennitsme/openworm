@@ -64,6 +64,23 @@ program
   });
 
 program
+  .command("list")
+  .description("List deployments from control plane")
+  .option("--api <url>", "Control plane API", process.env.OPENWORM_API_URL || "http://localhost:8080")
+  .action(async (opts) => {
+    const url = `${opts.api}/deployments`;
+    const res = await fetch(url);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      console.error(`list failed: ${res.status}`);
+      console.error(data);
+      process.exit(1);
+    }
+    const rows = (data.deployments || []).map((d: any) => ({ name: d.manifest?.name, ts: new Date(d.ts).toISOString() }));
+    console.table(rows);
+  });
+
+program
   .command("deploy")
   .description("Deploy manifest to control plane (stub)")
   .option("--manifest <path>", "Path to openworm.yaml", "openworm.yaml")

@@ -6,10 +6,18 @@ import YAML from "yaml";
 const apiBase = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8080";
 
 type Deployment = { manifest: any; ts: number };
+type LogEntry = { ts: number; level: string; message: string; manifest?: string | null };
+
+const templates: Record<string, string> = {
+  rag: "version: v1\nname: rag-agent\nruntime: node18\nentry: agents/rag/index.ts\n",
+  browser: "version: v1\nname: browser-agent\nruntime: node18\nentry: agents/browser/index.ts\n",
+  automation: "version: v1\nname: automation-agent\nruntime: node18\nentry: agents/automation/index.ts\n",
+};
 
 export default function Page() {
-  const [manifestText, setManifestText] = useState("version: v1\nname: sample\nruntime: node18\nentry: agents/sample/index.ts\n");
+  const [manifestText, setManifestText] = useState(templates.rag);
   const [deployments, setDeployments] = useState<Deployment[]>([]);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
   const [status, setStatus] = useState<string>("");
   const [errors, setErrors] = useState<{ path: string; message: string }[]>([]);
 
@@ -19,8 +27,15 @@ export default function Page() {
     setDeployments(data.deployments || []);
   };
 
+  const loadLogs = async () => {
+    const res = await fetch(`${apiBase}/logs`);
+    const data = await res.json();
+    setLogs(data.logs || []);
+  };
+
   useEffect(() => {
     loadDeployments();
+    loadLogs();
   }, []);
 
   const validate = () => {
@@ -55,19 +70,27 @@ export default function Page() {
     }
     setStatus(`Deployed ${data?.received}`);
     loadDeployments();
+    loadLogs();
   };
 
   return (
     <div className="container">
       <h1 style={{ fontSize: 28, marginBottom: 8 }}>openworm Web UI</h1>
-      <p style={{ color: "#9ca3af" }}>Manifest editor + deployments list.</p>
+      <p style={{ color: "#9ca3af" }}>Manifest editor + deployments + logs.</p>
       <div style={{ display: "grid", gap: 16, gridTemplateColumns: "2fr 1fr" }}>
         <div className="card">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <div style={{ fontWeight: 600 }}>Manifest editor</div>
-            <button className="cta" onClick={deploy} style={{ padding: "6px 10px", background: "#7c3aed", border: "none", borderRadius: 8, color: "white" }}>
-              Deploy
-            </button>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {Object.keys(templates).map((k) => (
+                <button key={k} className="cta" style={{ padding: "6px 10px", background: "#1f2937", border: "1px solid #2f3847", borderRadius: 8, color: "white" }} onClick={() => setManifestText(templates[k])}>
+                  Template: {k}
+                </button>
+              ))}
+              <button className="cta" onClick={deploy} style={{ padding: "6px 10px", background: "#7c3aed", border: "none", borderRadius: 8, color: "white" }}>
+                Deploy
+              </button>
+            </div>
           </div>
           <textarea
             value={manifestText}
@@ -96,11 +119,32 @@ export default function Page() {
                 <li key={idx} style={{ border: "1px solid #1f2937", borderRadius: 8, padding: 8, background: "#0f162a" }}>
                   <div style={{ fontWeight: 600 }}>{d.manifest?.name}</div>
                   <div style={{ color: "#9ca3af", fontSize: 12 }}>{new Date(d.ts).toLocaleString()}</div>
+                  <pre style={{ whiteSpace: "pre-wrap", color: "#9ca3af", fontSize: 12 }}>{JSON.stringify(d.manifest, null, 2)}</pre>
                 </li>
               ))}
             </ul>
           )}
         </div>
+      </div>
+
+      <div className="card" style={{ marginTop: 16 }}>
+        <div style={{ fontWeight: 600, marginBottom: 8 }}>Logs</div>
+        {logs.length === 0 ? (
+          <div style={{ color: "#9ca3af" }}>No logs yet.</div>
+        ) : (
+          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+            {logs.slice().reverse().map((l, idx) => (
+              <li key={idx} style={{ border: "1px solid #1f2937", borderRadius: 8, padding: 8, background: "#0f162a" }}>
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ color: l.level === "error" ? "#f87171" : "#a5f3fc" }}>{l.level}</span>
+                  <span style={{ color: "#9ca3af", fontSize: 12 }}>{new Date(l.ts).toLocaleString()}</span>
+                </div>
+                <div style={{ color: "#e9e9f1" }}>{l.message}</div>
+                {l.manifest && <div style={{ color: "#9ca3af", fontSize: 12 }}>manifest: {l.manifest}</div>}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );
