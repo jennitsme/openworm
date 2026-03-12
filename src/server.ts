@@ -6,7 +6,7 @@ import { ManifestSchema } from "./lib/schema";
 import { spawn } from "child_process";
 import crypto from "crypto";
 import { loadUsers } from "./lib/auth";
-import { loadSecrets } from "./lib/secrets";
+import { loadSecrets, resolveSecret } from "./lib/secrets";
 import { SkillRegistryItemSchema } from "./lib/tools";
 
 const users = loadUsers();
