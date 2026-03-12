@@ -86,6 +86,13 @@ app.get("/runs/:id", authGuard, (req, res) => {
   if (!run) return res.status(404).json({ error: "not found" });
   res.json(run);
 });
+app.get("/metrics", authGuard, (_req, res) => {
+  const counts = runs.reduce((acc, r) => {
+    acc[r.status] = (acc[r.status] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+  res.json({ runs: runs.length, statuses: counts });
+});
 app.get("/runlogs", authGuard, (req, res) => {
   const runId = req.query.runId as string | undefined;
   const data = runId ? runLogs.filter((l) => l.runId === runId) : runLogs;
@@ -174,11 +181,14 @@ function processQueue() {
   // egress deny: if docker available and enabled, run with --network none
   if (next.manifest.policies?.egress === "deny" && useDocker) {
     // allowHosts stub: not enforced here; could map to extra --add-host if needed
-    const args = [
-      "run",
-      "--rm",
-      "--network",
-      "none",
+    const args = ["run", "--rm", "--network", "none"];
+    if (next.manifest.policies?.cpu) args.push("--cpus", String(next.manifest.policies.cpu));
+    if (next.manifest.policies?.memory) args.push("--memory", `${next.manifest.policies.memory}m`);
+    if (next.manifest.policies?.pids) args.push("--pids-limit", String(next.manifest.policies.pids));
+    if (next.manifest.policies?.allowHosts) {
+      next.manifest.policies.allowHosts.forEach((h: string) => args.push("--add-host", h));
+    }
+    args.push(
       "-v",
       `${cwd}:/app`,
       "-w",
@@ -186,7 +196,7 @@ function processQueue() {
       dockerImage,
       "node",
       entry.replace(cwd + "/", ""),
-    ];
+    );
     addRunLog(next.id, `[start] docker sandbox network=none attempt=${next.attempts}`);
     const child = spawn("docker", args, { env });
     const timeoutMs = (next.manifest.policies?.timeout || 300) * 1000;
