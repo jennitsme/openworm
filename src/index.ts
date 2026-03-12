@@ -67,9 +67,11 @@ program
   .command("list")
   .description("List deployments from control plane")
   .option("--api <url>", "Control plane API", process.env.OPENWORM_API_URL || "http://localhost:8080")
+  .option("--token <token>", "API token (Bearer)", process.env.OPENWORM_API_KEY)
   .action(async (opts) => {
     const url = `${opts.api}/deployments`;
-    const res = await fetch(url);
+    const headers = opts.token ? { Authorization: `Bearer ${opts.token}` } : {};
+    const res = await fetch(url, { headers });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       console.error(`list failed: ${res.status}`);
@@ -95,9 +97,11 @@ program
       const content = fs.readFileSync(manifestPath, "utf-8");
       const manifest = ManifestSchema.parse(YAML.parse(content));
       const url = `${opts.api}/run`;
+      const headers: any = { "Content-Type": "application/json" };
+      if (opts.token) headers.Authorization = `Bearer ${opts.token}`;
       const res = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ manifest }),
       });
       const data = await res.json().catch(() => ({}));
@@ -139,6 +143,7 @@ program
   .description("Deploy manifest to control plane (stub)")
   .option("--manifest <path>", "Path to openworm.yaml", "openworm.yaml")
   .option("--api <url>", "Control plane API", process.env.OPENWORM_API_URL || "http://localhost:8080")
+  .option("--token <token>", "API token (Bearer)", process.env.OPENWORM_API_KEY)
   .action(async (opts) => {
     try {
       const manifestPath = path.resolve(process.cwd(), opts.manifest);
@@ -151,9 +156,11 @@ program
       const payload = { manifest };
       const url = `${opts.api}/deploy`;
       console.log(`POST ${url}`);
+      const headers: any = { "Content-Type": "application/json" };
+      if (opts.token) headers.Authorization = `Bearer ${opts.token}`;
       const res = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify(payload),
       });
       const data = await res.json().catch(() => ({}));
