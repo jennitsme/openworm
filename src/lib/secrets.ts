@@ -4,6 +4,15 @@ import path from "path";
 export type SecretMap = Record<string, string>;
 
 export function loadSecrets(): SecretMap {
+  // Prefer vault JSON from env (simulated vault integration)
+  const vaultJson = process.env.OPENWORM_VAULT_JSON;
+  if (vaultJson) {
+    try {
+      return JSON.parse(vaultJson);
+    } catch {
+      return {};
+    }
+  }
   const secretsPath = process.env.OPENWORM_SECRETS_FILE || path.join(process.cwd(), "data", "secrets.json");
   if (!fs.existsSync(secretsPath)) return {};
   try {

@@ -74,10 +74,30 @@ app.get("/health", (_req, res) => {
 app.get("/deployments", authGuard, (_req, res) => res.json({ deployments }));
 app.get("/logs", authGuard, (_req, res) => res.json({ logs }));
 app.get("/runs", authGuard, (_req, res) => res.json({ runs }));
+app.get("/runs/:id", authGuard, (req, res) => {
+  const run = runs.find((r) => r.id === req.params.id);
+  if (!run) return res.status(404).json({ error: "not found" });
+  res.json(run);
+});
 app.get("/runlogs", authGuard, (req, res) => {
   const runId = req.query.runId as string | undefined;
   const data = runId ? runLogs.filter((l) => l.runId === runId) : runLogs;
   res.json({ runLogs: data });
+});
+app.get("/runlogs/stream", authGuard, (req, res) => {
+  const runId = req.query.runId as string | undefined;
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  const send = () => {
+    const data = runId ? runLogs.filter((l) => l.runId === runId) : runLogs;
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+  const interval = setInterval(send, 2000);
+  send();
+  req.on("close", () => {
+    clearInterval(interval);
+  });
 });
 app.get("/skills", authGuard, (_req, res) => {
   res.json({ skills: registry });
@@ -143,6 +163,7 @@ function processQueue() {
 
   // egress deny: if docker available and enabled, run with --network none
   if (next.manifest.policies?.egress === "deny" && useDocker) {
+    // allowHosts stub: not enforced here; could map to extra --add-host if needed
     const args = [
       "run",
       "--rm",

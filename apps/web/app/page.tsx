@@ -54,7 +54,14 @@ export default function Page() {
   }, []);
 
   useEffect(() => {
-    loadRunLogs(selectedRun);
+    const es = new EventSource(`${apiBase}/runlogs/stream${selectedRun ? `?runId=${selectedRun}` : ""}`);
+    es.onmessage = (e) => {
+      try {
+        const parsed = JSON.parse(e.data || "[]");
+        setRunLogs(parsed || []);
+      } catch (_) {}
+    };
+    return () => es.close();
   }, [selectedRun]);
 
   const validate = () => {
@@ -111,6 +118,8 @@ export default function Page() {
     loadRuns();
   };
 
+  const borderColor = errors.length > 0 ? "#f97316" : status === "Valid" ? "#22c55e" : "#1f2937";
+
   return (
     <div className="container">
       <h1 style={{ fontSize: 28, marginBottom: 8 }}>openworm Web UI</h1>
@@ -136,7 +145,7 @@ export default function Page() {
           <textarea
             value={manifestText}
             onChange={(e) => setManifestText(e.target.value)}
-            style={{ width: "100%", height: 240, marginTop: 8, background: "#11172b", color: "#e9e9f1", borderRadius: 8, border: "1px solid #1f2937", padding: 8 }}
+            style={{ width: "100%", height: 240, marginTop: 8, background: "#11172b", color: "#e9e9f1", borderRadius: 8, border: `2px solid ${borderColor}`, padding: 8 }}
           />
           <div style={{ marginTop: 8, color: "#9ca3af" }}>Status: {status || "-"}</div>
           {errors.length > 0 && (
