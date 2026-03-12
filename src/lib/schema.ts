@@ -10,10 +10,16 @@ export const PoliciesSchema = z.object({
   timeout: z.number().optional(),
   memory: z.number().optional(),
   egress: z.enum(["allow", "deny", "restrict"]).optional(),
+  allowHosts: z.array(z.string()).optional(),
 });
 
 export const ScheduleSchema = z.object({
   cron: z.string(),
+});
+
+export const SecretRefSchema = z.object({
+  name: z.string(),
+  env: z.string().optional(),
 });
 
 export const ManifestSchema = z.object({
@@ -25,6 +31,7 @@ export const ManifestSchema = z.object({
   policies: PoliciesSchema.optional(),
   schedule: ScheduleSchema.optional(),
   skills: z.array(SkillSchema).optional(),
+  secrets: z.array(SecretRefSchema).optional(),
 });
 
 export type Manifest = z.infer<typeof ManifestSchema>;

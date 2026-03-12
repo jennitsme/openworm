@@ -5,19 +5,29 @@ import path from "path";
 import { ManifestSchema } from "./lib/schema";
 import { spawn } from "child_process";
 import crypto from "crypto";
+import { loadUsers } from "./lib/auth";
+import { loadSecrets } from "./lib/secrets";
+import { SkillRegistryItemSchema } from "./lib/tools";
 
-const API_KEY = process.env.OPENWORM_API_KEY || "";
+const users = loadUsers();
+const secretsMap = loadSecrets();
+const registry = [
+  { name: "rag-basic", package: "@openworm/skill-rag", version: "0.0.1" },
+  { name: "browser-helper", package: "@openworm/skill-browser-helper", version: "0.0.1" },
+];
+SkillRegistryItemSchema.array().parse(registry);
 
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "2mb" }));
 
 function authGuard(req: express.Request, res: express.Response, next: express.NextFunction) {
-  if (!API_KEY) return next();
+  if (!users.length) return next();
   const hdr = req.headers["authorization"];
-  if (!hdr || hdr !== `Bearer ${API_KEY}`) {
-    return res.status(401).json({ error: "unauthorized" });
-  }
+  const token = hdr?.replace("Bearer ", "");
+  const user = users.find((u) => u.token === token);
+  if (!user) return res.status(401).json({ error: "unauthorized" });
+  (req as any).user = user;
   next();
 }
 
@@ -31,21 +41,13 @@ let deployments: { manifest: any; ts: number }[] = [];
 let logs: { ts: number; level: string; message: string; manifest?: string | null }[] = [];
 let runs: { id: string; manifest: any; ts: number; status: string; exitCode?: number | null; attempts: number; maxAttempts: number }[] = [];
 let runLogs: { runId: string; ts: number; line: string }[] = [];
-if (fs.existsSync(deployFile)) {
-  try { deployments = JSON.parse(fs.readFileSync(deployFile, "utf-8")); } catch (_) { deployments = []; }
-}
-if (fs.existsSync(logsFile)) {
-  try { logs = JSON.parse(fs.readFileSync(logsFile, "utf-8")); } catch (_) { logs = []; }
-}
-if (fs.existsSync(runsFile)) {
-  try { runs = JSON.parse(fs.readFileSync(runsFile, "utf-8")); } catch (_) { runs = []; }
-}
-if (fs.existsSync(runLogsFile)) {
-  try { runLogs = JSON.parse(fs.readFileSync(runLogsFile, "utf-8")); } catch (_) { runLogs = []; }
-}
+try { deployments = fs.existsSync(deployFile) ? JSON.parse(fs.readFileSync(deployFile, "utf-8")) : []; } catch { deployments = []; }
+try { logs = fs.existsSync(logsFile) ? JSON.parse(fs.readFileSync(logsFile, "utf-8")) : []; } catch { logs = []; }
+try { runs = fs.existsSync(runsFile) ? JSON.parse(fs.readFileSync(runsFile, "utf-8")) : []; } catch { runs = []; }
+try { runLogs = fs.existsSync(runLogsFile) ? JSON.parse(fs.readFileSync(runLogsFile, "utf-8")) : []; } catch { runLogs = []; }
 
 function persist() {
-  fs.writeFileSync(deployFile, JSON.stringify(deployments, null, 2), "utf-8");
+  fs.writeFileSync(deployments.length ? deployFile : deployFile, JSON.stringify(deployments, null, 2), "utf-8");
   fs.writeFileSync(logsFile, JSON.stringify(logs.slice(-500), null, 2), "utf-8");
   fs.writeFileSync(runsFile, JSON.stringify(runs.slice(-500), null, 2), "utf-8");
   fs.writeFileSync(runLogsFile, JSON.stringify(runLogs.slice(-2000), null, 2), "utf-8");
@@ -66,17 +68,16 @@ function nextRunId() { return crypto.randomUUID(); }
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", deployments: deployments.length, runs: runs.length });
 });
-app.get("/deployments", (_req, res) => res.json({ deployments }));
-app.get("/logs", (_req, res) => res.json({ logs }));
-app.get("/runs", (_req, res) => res.json({ runs }));
-app.get("/runlogs", (req, res) => {
+app.get("/deployments", authGuard, (_req, res) => res.json({ deployments }));
+app.get("/logs", authGuard, (_req, res) => res.json({ logs }));
+app.get("/runs", authGuard, (_req, res) => res.json({ runs }));
+app.get("/runlogs", authGuard, (req, res) => {
   const runId = req.query.runId as string | undefined;
   const data = runId ? runLogs.filter((l) => l.runId === runId) : runLogs;
   res.json({ runLogs: data });
 });
-app.get("/skills", (_req, res) => {
-  // stub registry
-  res.json({ skills: [{ name: "rag-basic", package: "@openworm/skill-rag" }, { name: "browser-helper", package: "@openworm/skill-browser-helper" }] });
+app.get("/skills", authGuard, (_req, res) => {
+  res.json({ skills: registry });
 });
 
 app.post("/deploy", authGuard, (req, res) => {
@@ -117,8 +118,32 @@ function processQueue() {
   next.attempts += 1;
   const cwd = process.cwd();
   const entry = path.join(cwd, next.manifest.entry);
-  const env = { ...process.env, ...(next.manifest.vars || {}) };
-  // policy stub: egress allow/deny not enforced; TODO: add firewall/cgroup.
+  const env = { ...process.env, ...(next.manifest.vars || {}) } as any;
+
+  // secrets injection
+  if (next.manifest.secrets) {
+    next.manifest.secrets.forEach((s: any) => {
+      const val = secretsMap[s.name];
+      if (val) env[s.env || s.name] = val;
+    });
+  }
+
+  // memory limit via NODE_OPTIONS
+  if (next.manifest.policies?.memory) {
+    const memMb = next.manifest.policies.memory;
+    const existing = env.NODE_OPTIONS || "";
+    env.NODE_OPTIONS = `${existing} --max-old-space-size=${memMb}`.trim();
+  }
+
+  // egress policy stub
+  if (next.manifest.policies?.egress === "deny") {
+    addRunLog(next.id, `[blocked] egress=deny, not running`);
+    next.status = "failed";
+    persist();
+    running = false;
+    return;
+  }
+
   const child = spawn("node", [entry], { env, cwd });
   addRunLog(next.id, `[start] ${next.manifest.name} attempt=${next.attempts}`);
   child.stdout.on("data", (d) => addRunLog(next.id, d.toString()));

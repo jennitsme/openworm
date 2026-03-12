@@ -1,2 +1,2 @@
-export { ManifestSchema, type Manifest } from "./schema";
-export { ToolSchema, type Tool } from "./tools";
+export { ManifestSchema, type Manifest, SecretRefSchema } from "./schema";
+export { ToolSchema, SkillRegistryItemSchema, type Tool, type SkillRegistryItem } from "./tools";

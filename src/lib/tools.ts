@@ -7,4 +7,12 @@ export const ToolSchema = z.object({
   output: z.record(z.string(), z.any()).optional(),
 });
 
+export const SkillRegistryItemSchema = z.object({
+  name: z.string(),
+  package: z.string(),
+  version: z.string().optional(),
+  tools: z.array(ToolSchema).optional(),
+});
+
 export type Tool = z.infer<typeof ToolSchema>;
+export type SkillRegistryItem = z.infer<typeof SkillRegistryItemSchema>;
