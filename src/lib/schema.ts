@@ -9,6 +9,8 @@ export const SkillSchema = z.object({
 export const PoliciesSchema = z.object({
   timeout: z.number().optional(),
   memory: z.number().optional(),
+  cpu: z.number().optional(),
+  pids: z.number().optional(),
   egress: z.enum(["allow", "deny", "restrict"]).optional(),
   allowHosts: z.array(z.string()).optional(),
 });
@@ -22,11 +24,17 @@ export const SecretRefSchema = z.object({
   env: z.string().optional(),
 });
 
+export const OrgSchema = z.object({
+  id: z.string(),
+  name: z.string().optional(),
+});
+
 export const ManifestSchema = z.object({
   version: z.string(),
   name: z.string(),
   runtime: z.string(),
   entry: z.string(),
+  org: OrgSchema.optional(),
   vars: z.record(z.string(), z.any()).optional(),
   policies: PoliciesSchema.optional(),
   schedule: ScheduleSchema.optional(),

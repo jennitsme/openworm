@@ -12,8 +12,8 @@ import { SkillRegistryItemSchema } from "./lib/tools";
 const users = loadUsers();
 const secretsMap = loadSecrets();
 const registry = [
-  { name: "rag-basic", package: "@openworm/skill-rag", version: "0.0.1" },
-  { name: "browser-helper", package: "@openworm/skill-browser-helper", version: "0.0.1" },
+  { name: "rag-basic", package: "@openworm/skill-rag", version: "0.0.1", orgId: "default" },
+  { name: "browser-helper", package: "@openworm/skill-browser-helper", version: "0.0.1", orgId: "default" },
 ];
 SkillRegistryItemSchema.array().parse(registry);
 
@@ -32,6 +32,13 @@ function authGuard(req: express.Request, res: express.Response, next: express.Ne
   if (!user) return res.status(401).json({ error: "unauthorized" });
   (req as any).user = user;
   next();
+}
+
+function orgCheck(manifestOrg?: { id?: string }, user?: any) {
+  if (!users.length) return true;
+  if (!manifestOrg || !manifestOrg.id) return true;
+  if (!user?.orgId) return false;
+  return user.orgId === manifestOrg.id;
 }
 
 const dataDir = path.join(process.cwd(), "data");
@@ -108,6 +115,8 @@ app.post("/deploy", authGuard, (req, res) => {
     const user = (req as any).user;
     if (users.length && user?.role !== "admin") return res.status(403).json({ error: "forbidden" });
     const manifest = ManifestSchema.parse(req.body?.manifest || req.body);
+    const mUser = (req as any).user;
+    if (!orgCheck(manifest.org, mUser)) return res.status(403).json({ error: "org mismatch" });
     const record = { manifest, ts: Date.now() };
     deployments.push(record);
     addLog("info", `deploy ${manifest.name}`, manifest.name);
@@ -122,9 +131,10 @@ app.post("/deploy", authGuard, (req, res) => {
 app.post("/run", authGuard, (req, res) => {
   try {
     const manifest = ManifestSchema.parse(req.body?.manifest || req.body);
+    const mUser = (req as any).user;
+    if (!orgCheck(manifest.org, mUser)) return res.status(403).json({ error: "org mismatch" });
     const id = nextRunId();
-    const user = (req as any).user;
-    const record = { id, manifest, ts: Date.now(), status: "queued", attempts: 0, maxAttempts: 2, user: user?.name || user?.token || null } as any;
+    const record = { id, manifest, ts: Date.now(), status: "queued", attempts: 0, maxAttempts: 2, user: mUser?.name || mUser?.token || null } as any;
     runs.push(record);
     addLog("info", `run queued ${manifest.name}`, manifest.name);
     persist();

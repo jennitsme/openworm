@@ -1,4 +1,4 @@
-export type User = { token: string; role: "admin" | "user"; name?: string };
+export type User = { token: string; role: "admin" | "user"; name?: string; orgId?: string };
 
 export function loadUsers(): User[] {
   try {
