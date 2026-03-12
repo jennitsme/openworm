@@ -1,0 +1,19 @@
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  background: #0b1021;
+  color: #e9e9f1;
+}
+
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 32px 16px;
+}
+
+.card {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  padding: 16px;
+}

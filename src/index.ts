@@ -44,7 +44,7 @@ program
     const serviceName = manifest.name.replace(/[^a-zA-Z0-9_-]/g, "-");
     const isTs = manifest.entry.endsWith(".ts");
     const cmd = isTs
-      ? ["npx", "ts-node", "--transpile-only", manifest.entry]
+      ? ["npx", "ts-node-dev", "--respawn", "--transpileOnly", manifest.entry]
       : ["node", manifest.entry];
     const compose = {
       version: "3.9",
@@ -69,27 +69,39 @@ program
   .option("--manifest <path>", "Path to openworm.yaml", "openworm.yaml")
   .option("--api <url>", "Control plane API", process.env.OPENWORM_API_URL || "http://localhost:8080")
   .action(async (opts) => {
-    const manifestPath = path.resolve(process.cwd(), opts.manifest);
-    if (!fs.existsSync(manifestPath)) {
-      console.error(`manifest not found: ${manifestPath}`);
+    try {
+      const manifestPath = path.resolve(process.cwd(), opts.manifest);
+      if (!fs.existsSync(manifestPath)) {
+        console.error(`manifest not found: ${manifestPath}`);
+        process.exit(1);
+      }
+      const content = fs.readFileSync(manifestPath, "utf-8");
+      const manifest = ManifestSchema.parse(YAML.parse(content));
+      const payload = { manifest };
+      const url = `${opts.api}/deploy`;
+      console.log(`POST ${url}`);
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        console.error(`deploy failed: ${res.status} ${res.statusText}`);
+        if (data?.issues) console.error(JSON.stringify(data.issues, null, 2));
+        else console.error(data);
+        process.exit(1);
+      }
+      console.log("deploy ok", data);
+    } catch (err: any) {
+      if (err.issues) {
+        console.error("Manifest validation failed:");
+        console.error(JSON.stringify(err.issues, null, 2));
+      } else {
+        console.error(err.message || err);
+      }
       process.exit(1);
     }
-    const content = fs.readFileSync(manifestPath, "utf-8");
-    const manifest = ManifestSchema.parse(YAML.parse(content));
-    const payload = { manifest };
-    const url = `${opts.api}/deploy`;
-    console.log(`POST ${url}`);
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      console.error(`deploy failed: ${res.status} ${res.statusText}`, data);
-      process.exit(1);
-    }
-    console.log("deploy ok", data);
   });
 
 program.parse(process.argv);

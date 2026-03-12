@@ -1,23 +1,26 @@
 import express from "express";
 import { ManifestSchema } from "./lib/schema";
-import YAML from "yaml";
 
 const app = express();
 app.use(express.json({ limit: "2mb" }));
 
-const manifests: any[] = [];
+const deployments: { manifest: any; ts: number }[] = [];
 
 app.get("/health", (_req, res) => {
-  res.json({ status: "ok", count: manifests.length });
+  res.json({ status: "ok", deployments: deployments.length });
+});
+
+app.get("/deployments", (_req, res) => {
+  res.json({ deployments });
 });
 
 app.post("/deploy", (req, res) => {
   try {
     const manifest = ManifestSchema.parse(req.body?.manifest || req.body);
-    manifests.push({ manifest, ts: Date.now() });
+    deployments.push({ manifest, ts: Date.now() });
     return res.json({ status: "ok", received: manifest.name });
   } catch (err: any) {
-    return res.status(400).json({ error: err.message });
+    return res.status(400).json({ error: err.message, issues: err.issues || null });
   }
 });
 
