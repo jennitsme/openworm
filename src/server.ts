@@ -137,8 +137,17 @@ app.get("/runlogs/stream", authGuard, (req, res) => {
     clearInterval(interval);
   });
 });
-app.get("/skills", authGuard, (_req, res) => {
-  res.json({ skills: registry });
+app.get("/skills", authGuard, (req, res) => {
+  const user = (req as any).user;
+  const data = users.length && user?.role !== "admin" ? registry.filter((r) => !r.orgId || r.orgId === user?.orgId) : registry;
+  res.json({ skills: data });
+});
+
+app.get("/orgs", authGuard, (req, res) => {
+  const user = (req as any).user;
+  if (users.length && user?.role !== "admin") return res.status(403).json({ error: "forbidden" });
+  const orgs = Array.from(new Set(registry.map((r) => r.orgId || "default"))).map((id) => ({ id }));
+  res.json({ orgs });
 });
 
 app.post("/deploy", authGuard, (req, res) => {

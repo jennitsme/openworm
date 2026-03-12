@@ -31,7 +31,9 @@ export function loadSecrets(): SecretMap {
 export async function resolveSecret(ref: SecretRef, secrets: SecretMap): Promise<string | undefined> {
   // basic: check map
   if (secrets[ref.name]) return secrets[ref.name];
-  // future: check ref.source/path for external providers (1Password/HVault)
-  // stub: not implemented
+  if (ref.path && ref.path.startsWith("vault://")) {
+    // stub: vault providers not implemented; would call provider by scheme (op/hv)
+    return undefined;
+  }
   return undefined;
 }

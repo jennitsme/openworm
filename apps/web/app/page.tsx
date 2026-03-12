@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { ManifestSchema } from "../../../src/lib/schema";
 import YAML from "yaml";
 
@@ -9,6 +9,8 @@ type Deployment = { manifest: any; ts: number };
 type LogEntry = { ts: number; level: string; message: string; manifest?: string | null };
 type Run = { id: string; manifest: any; ts: number; status: string; exitCode?: number | null };
 type RunLog = { runId: string; ts: number; line: string };
+
+type InlineError = { line: number; message: string };
 
 const templates: Record<string, string> = {
   rag: "version: v1\nname: rag-agent\nruntime: node18\nentry: agents/rag/index.ts\n",
@@ -25,6 +27,8 @@ export default function Page() {
   const [selectedRun, setSelectedRun] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("");
   const [errors, setErrors] = useState<{ path: string; message: string }[]>([]);
+  const [inlineErrors, setInlineErrors] = useState<InlineError[]>([]);
+  const logRef = useRef<HTMLDivElement | null>(null);
 
   const loadDeployments = async () => {
     const res = await fetch(`${apiBase}/deployments`);
@@ -41,11 +45,6 @@ export default function Page() {
     const data = await res.json();
     setRuns(data.runs || []);
   };
-  const loadRunLogs = async (runId?: string | null) => {
-    const res = await fetch(`${apiBase}/runlogs${runId ? `?runId=${runId}` : ""}`);
-    const data = await res.json();
-    setRunLogs(data.runLogs || []);
-  };
 
   useEffect(() => {
     loadDeployments();
@@ -59,6 +58,9 @@ export default function Page() {
       try {
         const parsed = JSON.parse(e.data || "[]");
         setRunLogs(parsed || []);
+        if (logRef.current) {
+          logRef.current.scrollTop = logRef.current.scrollHeight;
+        }
       } catch (_) {}
     };
     return () => es.close();
@@ -69,12 +71,24 @@ export default function Page() {
       const parsed = YAML.parse(manifestText);
       ManifestSchema.parse(parsed);
       setErrors([]);
+      setInlineErrors([]);
       setStatus("Valid");
       return parsed;
     } catch (err: any) {
       const issues = err.issues?.map((i: any) => ({ path: i.path?.join?.(".") || "", message: i.message })) || [];
       setErrors(issues);
       setStatus("Invalid");
+      // naive line estimation: find path key line
+      const lines = manifestText.split("\n");
+      const inline: InlineError[] = [];
+      issues.forEach((iss: any) => {
+        const key = iss.path?.[0];
+        if (key) {
+          const idx = lines.findIndex((ln) => ln.includes(key));
+          if (idx >= 0) inline.push({ line: idx + 1, message: iss.message });
+        }
+      });
+      setInlineErrors(inline);
       return null;
     }
   };
@@ -145,8 +159,15 @@ export default function Page() {
           <textarea
             value={manifestText}
             onChange={(e) => setManifestText(e.target.value)}
-            style={{ width: "100%", height: 240, marginTop: 8, background: "#11172b", color: "#e9e9f1", borderRadius: 8, border: `2px solid ${borderColor}`, padding: 8 }}
+            style={{ width: "100%", height: 240, marginTop: 8, background: "#11172b", color: "#e9e9f1", borderRadius: 8, border: `2px solid ${borderColor}`, padding: 8, fontFamily: "monospace" }}
           />
+          {inlineErrors.length > 0 && (
+            <div style={{ marginTop: 4, color: "#f97316", fontSize: 12 }}>
+              {inlineErrors.map((e, idx) => (
+                <div key={idx}>Line {e.line}: {e.message}</div>
+              ))}
+            </div>
+          )}
           <div style={{ marginTop: 8, color: "#9ca3af" }}>Status: {status || "-"}</div>
           {errors.length > 0 && (
             <div style={{ marginTop: 8 }}>
@@ -196,7 +217,7 @@ export default function Page() {
             </ul>
             <div style={{ border: "1px solid #1f2937", borderRadius: 8, padding: 8, background: "#0f162a" }}>
               <div style={{ fontWeight: 600, marginBottom: 4 }}>Run logs {selectedRun ? `(runId=${selectedRun})` : ""}</div>
-              <div style={{ maxHeight: 220, overflowY: "auto", fontSize: 12, color: "#e9e9f1" }}>
+              <div ref={logRef} style={{ maxHeight: 220, overflowY: "auto", fontSize: 12, color: "#e9e9f1" }}>
                 {(runLogs || []).slice().reverse().map((l, idx) => (
                   <div key={idx} style={{ marginBottom: 4 }}>
                     <span style={{ color: "#9ca3af" }}>{new Date(l.ts).toLocaleTimeString()} </span>
