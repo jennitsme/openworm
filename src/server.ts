@@ -17,6 +17,9 @@ const registry = [
 ];
 SkillRegistryItemSchema.array().parse(registry);
 
+const useDocker = process.env.OPENWORM_USE_DOCKER === "1";
+const dockerImage = process.env.OPENWORM_DOCKER_IMAGE || "node:20";
+
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "2mb" }));
@@ -82,6 +85,8 @@ app.get("/skills", authGuard, (_req, res) => {
 
 app.post("/deploy", authGuard, (req, res) => {
   try {
+    const user = (req as any).user;
+    if (users.length && user?.role !== "admin") return res.status(403).json({ error: "forbidden" });
     const manifest = ManifestSchema.parse(req.body?.manifest || req.body);
     const record = { manifest, ts: Date.now() };
     deployments.push(record);
@@ -98,7 +103,8 @@ app.post("/run", authGuard, (req, res) => {
   try {
     const manifest = ManifestSchema.parse(req.body?.manifest || req.body);
     const id = nextRunId();
-    const record = { id, manifest, ts: Date.now(), status: "queued", attempts: 0, maxAttempts: 2 };
+    const user = (req as any).user;
+    const record = { id, manifest, ts: Date.now(), status: "queued", attempts: 0, maxAttempts: 2, user: user?.name || user?.token || null } as any;
     runs.push(record);
     addLog("info", `run queued ${manifest.name}`, manifest.name);
     persist();
@@ -135,20 +141,58 @@ function processQueue() {
     env.NODE_OPTIONS = `${existing} --max-old-space-size=${memMb}`.trim();
   }
 
-  // egress policy stub
-  if (next.manifest.policies?.egress === "deny") {
-    addRunLog(next.id, `[blocked] egress=deny, not running`);
-    next.status = "failed";
+  // egress deny: if docker available and enabled, run with --network none
+  if (next.manifest.policies?.egress === "deny" && useDocker) {
+    const args = [
+      "run",
+      "--rm",
+      "--network",
+      "none",
+      "-v",
+      `${cwd}:/app`,
+      "-w",
+      "/app",
+      dockerImage,
+      "node",
+      entry.replace(cwd + "/", ""),
+    ];
+    addRunLog(next.id, `[start] docker sandbox network=none attempt=${next.attempts}`);
+    const child = spawn("docker", args, { env });
+    const timeoutMs = (next.manifest.policies?.timeout || 300) * 1000;
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      addRunLog(next.id, `[timeout] killed after ${timeoutMs}ms`);
+    }, timeoutMs);
+    child.stdout.on("data", (d) => addRunLog(next.id, d.toString()));
+    child.stderr.on("data", (d) => addRunLog(next.id, d.toString()));
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      next.status = code === 0 ? "completed" : "failed";
+      next.exitCode = code;
+      addRunLog(next.id, `[exit] code=${code}`);
+      if (code !== 0 && next.attempts < next.maxAttempts) {
+        next.status = "queued";
+        addRunLog(next.id, `[retry] scheduling retry ${next.attempts + 1}/${next.maxAttempts}`);
+      }
+      persist();
+      running = false;
+    });
     persist();
-    running = false;
     return;
   }
 
+  // fallback: native spawn
   const child = spawn("node", [entry], { env, cwd });
+  const timeoutMs = (next.manifest.policies?.timeout || 300) * 1000;
+  const timer = setTimeout(() => {
+    child.kill("SIGKILL");
+    addRunLog(next.id, `[timeout] killed after ${timeoutMs}ms`);
+  }, timeoutMs);
   addRunLog(next.id, `[start] ${next.manifest.name} attempt=${next.attempts}`);
   child.stdout.on("data", (d) => addRunLog(next.id, d.toString()));
   child.stderr.on("data", (d) => addRunLog(next.id, d.toString()));
   child.on("close", (code) => {
+    clearTimeout(timer);
     next.status = code === 0 ? "completed" : "failed";
     next.exitCode = code;
     addRunLog(next.id, `[exit] code=${code}`);
