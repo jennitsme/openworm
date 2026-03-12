@@ -10,6 +10,7 @@
   "scripts": {
     "build": "tsc",
     "dev": "ts-node src/index.ts",
+    "server": "ts-node src/server.ts",
     "lint": "eslint ."
   },
   "keywords": [
@@ -21,8 +22,10 @@
   "author": "openworm",
   "license": "MIT",
   "dependencies": {
+    "@types/express": "^5.0.6",
     "@types/node": "^25.4.0",
     "commander": "^14.0.3",
+    "express": "^5.2.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
     "yaml": "^2.8.2",

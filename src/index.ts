@@ -42,6 +42,10 @@ program
     const content = fs.readFileSync(manifestPath, "utf-8");
     const manifest = ManifestSchema.parse(YAML.parse(content));
     const serviceName = manifest.name.replace(/[^a-zA-Z0-9_-]/g, "-");
+    const isTs = manifest.entry.endsWith(".ts");
+    const cmd = isTs
+      ? ["npx", "ts-node", "--transpile-only", manifest.entry]
+      : ["node", manifest.entry];
     const compose = {
       version: "3.9",
       services: {
@@ -49,8 +53,8 @@ program
           image: "node:20",
           working_dir: "/app",
           volumes: ["./:/app"],
-          command: ["node", manifest.entry],
-          environment: manifest.vars || {},
+          command: cmd,
+          environment: { NODE_ENV: "development", ...(manifest.vars || {}) },
         },
       },
     };
@@ -73,9 +77,19 @@ program
     const content = fs.readFileSync(manifestPath, "utf-8");
     const manifest = ManifestSchema.parse(YAML.parse(content));
     const payload = { manifest };
-    console.log(`[stub] Would POST manifest to ${opts.api}/deploy`);
-    console.log(JSON.stringify(payload, null, 2));
-    // TODO: implement actual POST
+    const url = `${opts.api}/deploy`;
+    console.log(`POST ${url}`);
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      console.error(`deploy failed: ${res.status} ${res.statusText}`, data);
+      process.exit(1);
+    }
+    console.log("deploy ok", data);
   });
 
 program.parse(process.argv);
