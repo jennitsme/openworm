@@ -68,7 +68,16 @@ export default function Page() {
 
   const validate = () => {
     try {
-      const parsed = YAML.parse(manifestText);
+      const doc = YAML.parseDocument(manifestText);
+      if (doc.errors?.length) {
+        const err = doc.errors[0];
+        const line = err.linePos ? err.linePos[0].line + 1 : undefined;
+        setInlineErrors(line ? [{ line, message: err.message }] : []);
+        setErrors([{ path: "yaml", message: err.message }]);
+        setStatus("Invalid YAML");
+        return null;
+      }
+      const parsed = doc.toJS();
       ManifestSchema.parse(parsed);
       setErrors([]);
       setInlineErrors([]);
@@ -78,13 +87,12 @@ export default function Page() {
       const issues = err.issues?.map((i: any) => ({ path: i.path?.join?.(".") || "", message: i.message })) || [];
       setErrors(issues);
       setStatus("Invalid");
-      // naive line estimation: find path key line
       const lines = manifestText.split("\n");
       const inline: InlineError[] = [];
       issues.forEach((iss: any) => {
         const key = iss.path?.[0];
         if (key) {
-          const idx = lines.findIndex((ln) => ln.includes(key));
+          const idx = lines.findIndex((ln) => ln.trim().startsWith(key + ":"));
           if (idx >= 0) inline.push({ line: idx + 1, message: iss.message });
         }
       });

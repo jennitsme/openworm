@@ -28,14 +28,47 @@ export function loadSecrets(): SecretMap {
   };
 }
 
-async function provider1Password(_ref: SecretRef): Promise<string | undefined> {
-  // TODO: implement using OP_CONNECT_HOST + OP_CONNECT_TOKEN
-  return undefined;
+async function provider1Password(ref: SecretRef): Promise<string | undefined> {
+  const host = process.env.OP_CONNECT_HOST;
+  const token = process.env.OP_CONNECT_TOKEN;
+  if (!host || !token || !ref.path) return undefined;
+  // path format: vault://op/<item>/<field>
+  const parts = ref.path.replace("vault://op/", "").split("/");
+  if (parts.length < 2) return undefined;
+  const item = parts[0];
+  const field = parts[1];
+  try {
+    const resp = await fetch(`${host}/v1/vaults/default/items/${item}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!resp.ok) return undefined;
+    const data = await resp.json();
+    const fields = data?.fields || [];
+    const match = fields.find((f: any) => f.label === field || f.id === field);
+    return match?.value;
+  } catch {
+    return undefined;
+  }
 }
 
-async function providerHashiCorpVault(_ref: SecretRef): Promise<string | undefined> {
-  // TODO: implement using VAULT_ADDR + VAULT_TOKEN
-  return undefined;
+async function providerHashiCorpVault(ref: SecretRef): Promise<string | undefined> {
+  const addr = process.env.VAULT_ADDR;
+  const token = process.env.VAULT_TOKEN;
+  if (!addr || !token || !ref.path) return undefined;
+  // path format: vault://hv/<path>#field
+  const without = ref.path.replace("vault://hv/", "");
+  const [p, field] = without.split("#");
+  try {
+    const resp = await fetch(`${addr}/v1/${p}`, { headers: { "X-Vault-Token": token } });
+    if (!resp.ok) return undefined;
+    const data = await resp.json();
+    const secretData = data?.data?.data || data?.data;
+    if (!secretData) return undefined;
+    if (field) return secretData[field];
+    return secretData[ref.name];
+  } catch {
+    return undefined;
+  }
 }
 
 export async function resolveSecret(ref: SecretRef, secrets: SecretMap): Promise<string | undefined> {
