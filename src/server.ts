@@ -78,33 +78,57 @@ function nextRunId() { return crypto.randomUUID(); }
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", deployments: deployments.length, runs: runs.length });
 });
-app.get("/deployments", authGuard, (_req, res) => res.json({ deployments }));
-app.get("/logs", authGuard, (_req, res) => res.json({ logs }));
-app.get("/runs", authGuard, (_req, res) => res.json({ runs }));
+app.get("/deployments", authGuard, (req, res) => {
+  const user = (req as any).user;
+  const data = users.length && user?.role !== "admin"
+    ? deployments.filter((d) => orgCheck(d.manifest.org, user))
+    : deployments;
+  res.json({ deployments: data });
+});
+app.get("/logs", authGuard, (req, res) => {
+  const user = (req as any).user;
+  const data = users.length && user?.role !== "admin"
+    ? logs.filter((l) => !l.manifest || orgCheck({ id: l.manifest }, user))
+    : logs;
+  res.json({ logs: data });
+});
+app.get("/runs", authGuard, (req, res) => {
+  const user = (req as any).user;
+  const data = users.length && user?.role !== "admin"
+    ? runs.filter((r) => orgCheck(r.manifest.org, user))
+    : runs;
+  res.json({ runs: data });
+});
 app.get("/runs/:id", authGuard, (req, res) => {
   const run = runs.find((r) => r.id === req.params.id);
   if (!run) return res.status(404).json({ error: "not found" });
+  const user = (req as any).user;
+  if (users.length && user?.role !== "admin" && !orgCheck(run.manifest.org, user)) return res.status(403).json({ error: "forbidden" });
   res.json(run);
 });
-app.get("/metrics", authGuard, (_req, res) => {
-  const counts = runs.reduce((acc, r) => {
+app.get("/metrics", authGuard, (req, res) => {
+  const user = (req as any).user;
+  const filtered = users.length && user?.role !== "admin" ? runs.filter((r) => orgCheck(r.manifest.org, user)) : runs;
+  const counts = filtered.reduce((acc, r) => {
     acc[r.status] = (acc[r.status] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
-  res.json({ runs: runs.length, statuses: counts });
+  res.json({ runs: filtered.length, statuses: counts });
 });
 app.get("/runlogs", authGuard, (req, res) => {
   const runId = req.query.runId as string | undefined;
-  const data = runId ? runLogs.filter((l) => l.runId === runId) : runLogs;
+  const user = (req as any).user;
+  const data = runLogs.filter((l) => (!runId || l.runId === runId) && filterRunLogByOrg(l.runId, user));
   res.json({ runLogs: data });
 });
 app.get("/runlogs/stream", authGuard, (req, res) => {
   const runId = req.query.runId as string | undefined;
+  const user = (req as any).user;
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
   const send = () => {
-    const data = runId ? runLogs.filter((l) => l.runId === runId) : runLogs;
+    const data = runLogs.filter((l) => (!runId || l.runId === runId) && filterRunLogByOrg(l.runId, user));
     res.write(`data: ${JSON.stringify(data)}\n\n`);
   };
   const interval = setInterval(send, 2000);
@@ -151,8 +175,15 @@ app.post("/run", authGuard, (req, res) => {
   }
 });
 
+function filterRunLogByOrg(runId: string, user: any) {
+  if (!users.length || user?.role === "admin") return true;
+  const run = runs.find((r) => r.id === runId);
+  if (!run) return false;
+  return orgCheck(run.manifest.org, user);
+}
+
 let running = false;
-function processQueue() {
+async function processQueue() {
   if (running) return;
   const next = runs.find((r) => r.status === "queued");
   if (!next) return;
@@ -165,10 +196,10 @@ function processQueue() {
 
   // secrets injection
   if (next.manifest.secrets) {
-    next.manifest.secrets.forEach((s: any) => {
-      const val = secretsMap[s.name];
+    for (const s of next.manifest.secrets) {
+      const val = await resolveSecret(s, secretsMap);
       if (val) env[s.env || s.name] = val;
-    });
+    }
   }
 
   // memory limit via NODE_OPTIONS
