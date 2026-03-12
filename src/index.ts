@@ -81,6 +81,60 @@ program
   });
 
 program
+  .command("run")
+  .description("Queue a run")
+  .option("--manifest <path>", "Path to openworm.yaml", "openworm.yaml")
+  .option("--api <url>", "Control plane API", process.env.OPENWORM_API_URL || "http://localhost:8080")
+  .action(async (opts) => {
+    try {
+      const manifestPath = path.resolve(process.cwd(), opts.manifest);
+      if (!fs.existsSync(manifestPath)) {
+        console.error(`manifest not found: ${manifestPath}`);
+        process.exit(1);
+      }
+      const content = fs.readFileSync(manifestPath, "utf-8");
+      const manifest = ManifestSchema.parse(YAML.parse(content));
+      const url = `${opts.api}/run`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ manifest }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        console.error(`run failed: ${res.status}`);
+        if (data?.issues) console.table(data.issues.map((i: any) => ({ path: i.path?.join?.(".") || "", message: i.message })));
+        else console.error(data);
+        process.exit(1);
+      }
+      console.log("run queued", data);
+    } catch (err: any) {
+      if (err.issues) console.table(err.issues.map((i: any) => ({ path: i.path?.join?.(".") || "", message: i.message })));
+      else console.error(err.message || err);
+      process.exit(1);
+    }
+  });
+
+program
+  .command("logs")
+  .description("Fetch run logs")
+  .option("--api <url>", "Control plane API", process.env.OPENWORM_API_URL || "http://localhost:8080")
+  .option("--run <id>", "Run ID to filter")
+  .action(async (opts) => {
+    const url = `${opts.api}/runlogs${opts.run ? `?runId=${opts.run}` : ""}`;
+    const res = await fetch(url);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      console.error(`logs failed: ${res.status}`);
+      console.error(data);
+      process.exit(1);
+    }
+    (data.runLogs || []).forEach((l: any) => {
+      console.log(new Date(l.ts).toISOString(), l.runId, l.line.trim());
+    });
+  });
+
+program
   .command("deploy")
   .description("Deploy manifest to control plane (stub)")
   .option("--manifest <path>", "Path to openworm.yaml", "openworm.yaml")
