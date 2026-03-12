@@ -3,14 +3,18 @@ import path from "path";
 import { ragTemplate } from "../templates/rag";
 import { browserTemplate } from "../templates/browser";
 import { automationTemplate } from "../templates/automation";
+import { ragEmbTemplate } from "../templates/rag-emb";
+import { browserHelperTemplate } from "../templates/browser-helper";
 
-export type TemplateName = "rag" | "browser" | "automation";
+export type TemplateName = "rag" | "rag-emb" | "browser" | "browser-helper" | "automation";
 
 type TemplateDef = { manifest: string; code: string };
 
 const registry: Record<TemplateName, TemplateDef> = {
   rag: ragTemplate,
+  "rag-emb": ragEmbTemplate,
   browser: browserTemplate,
+  "browser-helper": browserHelperTemplate,
   automation: automationTemplate,
 };
 

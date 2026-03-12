@@ -3,6 +3,9 @@ import { Command } from "commander";
 import path from "path";
 import fs from "fs";
 import { scaffold, TemplateName } from "./lib/templates";
+import { ManifestSchema } from "./lib/schema";
+import YAML from "yaml";
+import { readFileSync, writeFileSync } from "fs";
 
 const pkg = require("../package.json");
 
@@ -12,7 +15,7 @@ program.name("openworm").description("Developer-first agent CLI").version(pkg.ve
 program
   .command("init")
   .description("Scaffold an agent")
-  .requiredOption("--template <name>", "Template name (rag|browser|automation)")
+  .requiredOption("--template <name>", "Template name (rag|rag-emb|browser|browser-helper|automation)")
   .requiredOption("--name <agent>", "Agent name")
   .option("--dir <path>", "Target directory", ".")
   .action((opts) => {
@@ -27,16 +30,52 @@ program
 
 program
   .command("dev")
-  .description("Run local dev (stub)")
-  .action(() => {
-    console.log("[stub] Run docker compose up with your manifest. Coming soon.");
+  .description("Generate docker-compose for local parity")
+  .option("--manifest <path>", "Path to openworm.yaml", "openworm.yaml")
+  .option("--out <file>", "Output compose file", "docker-compose.openworm.yml")
+  .action((opts) => {
+    const manifestPath = path.resolve(process.cwd(), opts.manifest);
+    if (!fs.existsSync(manifestPath)) {
+      console.error(`manifest not found: ${manifestPath}`);
+      process.exit(1);
+    }
+    const content = fs.readFileSync(manifestPath, "utf-8");
+    const manifest = ManifestSchema.parse(YAML.parse(content));
+    const serviceName = manifest.name.replace(/[^a-zA-Z0-9_-]/g, "-");
+    const compose = {
+      version: "3.9",
+      services: {
+        [serviceName]: {
+          image: "node:20",
+          working_dir: "/app",
+          volumes: ["./:/app"],
+          command: ["node", manifest.entry],
+          environment: manifest.vars || {},
+        },
+      },
+    };
+    const outPath = path.resolve(process.cwd(), opts.out);
+    fs.writeFileSync(outPath, YAML.stringify(compose), "utf-8");
+    console.log(`Generated ${opts.out} for service ${serviceName}`);
   });
 
 program
   .command("deploy")
-  .description("Deploy to cloud control plane (stub)")
-  .action(() => {
-    console.log("[stub] Deploy manifest to openworm control plane. Coming soon.");
+  .description("Deploy manifest to control plane (stub)")
+  .option("--manifest <path>", "Path to openworm.yaml", "openworm.yaml")
+  .option("--api <url>", "Control plane API", process.env.OPENWORM_API_URL || "http://localhost:8080")
+  .action(async (opts) => {
+    const manifestPath = path.resolve(process.cwd(), opts.manifest);
+    if (!fs.existsSync(manifestPath)) {
+      console.error(`manifest not found: ${manifestPath}`);
+      process.exit(1);
+    }
+    const content = fs.readFileSync(manifestPath, "utf-8");
+    const manifest = ManifestSchema.parse(YAML.parse(content));
+    const payload = { manifest };
+    console.log(`[stub] Would POST manifest to ${opts.api}/deploy`);
+    console.log(JSON.stringify(payload, null, 2));
+    // TODO: implement actual POST
   });
 
 program.parse(process.argv);
