@@ -1,0 +1,31 @@
+{
+  "name": "openworm",
+  "version": "1.0.0",
+  "description": "Developer-first agent framework (Node/TS) focused on DX: - Template library: RAG, browser automation, scheduled automation (one-command scaffold) - Local+cloud parity: develop in Docker, promote with the same manifest - Strong SDK: TypeScript-first with type-safe tool definitions; Python SDK planned - CLI + Web UI (planned): editor, logs, runbook recipes",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "openworm": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node src/index.ts",
+    "lint": "eslint ."
+  },
+  "keywords": [
+    "agents",
+    "ai",
+    "cli",
+    "openworm"
+  ],
+  "author": "openworm",
+  "license": "MIT",
+  "dependencies": {
+    "@types/node": "^25.4.0",
+    "commander": "^14.0.3",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3",
+    "yaml": "^2.8.2",
+    "zod": "^4.3.6"
+  }
+}
