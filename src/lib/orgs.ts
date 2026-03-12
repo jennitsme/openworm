@@ -7,3 +7,10 @@ export function userCanAccessOrg(user: UserOrg | undefined, orgId?: string) {
   if (!user.orgId) return false;
   return user.orgId === orgId;
 }
+
+export function listOrgsFromUsers(users: UserOrg[]): Org[] {
+  const ids = new Set<string>();
+  users.forEach((u) => { if (u.orgId) ids.add(u.orgId); });
+  if (!ids.size) ids.add("default");
+  return Array.from(ids).map((id) => ({ id }));
+}

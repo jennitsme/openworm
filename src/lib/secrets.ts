@@ -28,12 +28,19 @@ export function loadSecrets(): SecretMap {
   };
 }
 
+async function provider1Password(_ref: SecretRef): Promise<string | undefined> {
+  // TODO: implement using OP_CONNECT_HOST + OP_CONNECT_TOKEN
+  return undefined;
+}
+
+async function providerHashiCorpVault(_ref: SecretRef): Promise<string | undefined> {
+  // TODO: implement using VAULT_ADDR + VAULT_TOKEN
+  return undefined;
+}
+
 export async function resolveSecret(ref: SecretRef, secrets: SecretMap): Promise<string | undefined> {
-  // basic: check map
   if (secrets[ref.name]) return secrets[ref.name];
-  if (ref.path && ref.path.startsWith("vault://")) {
-    // stub: vault providers not implemented; would call provider by scheme (op/hv)
-    return undefined;
-  }
+  if (ref.path?.startsWith("vault://op/")) return provider1Password(ref);
+  if (ref.path?.startsWith("vault://hv/")) return providerHashiCorpVault(ref);
   return undefined;
 }

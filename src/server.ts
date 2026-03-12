@@ -8,6 +8,7 @@ import crypto from "crypto";
 import { loadUsers } from "./lib/auth";
 import { loadSecrets, resolveSecret } from "./lib/secrets";
 import { SkillRegistryItemSchema } from "./lib/tools";
+import { listOrgsFromUsers } from "./lib/orgs";
 
 const users = loadUsers();
 const secretsMap = loadSecrets();
@@ -146,7 +147,7 @@ app.get("/skills", authGuard, (req, res) => {
 app.get("/orgs", authGuard, (req, res) => {
   const user = (req as any).user;
   if (users.length && user?.role !== "admin") return res.status(403).json({ error: "forbidden" });
-  const orgs = Array.from(new Set(registry.map((r) => r.orgId || "default"))).map((id) => ({ id }));
+  const orgs = listOrgsFromUsers(users);
   res.json({ orgs });
 });
 
