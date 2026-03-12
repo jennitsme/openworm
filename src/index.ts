@@ -88,15 +88,18 @@ program
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         console.error(`deploy failed: ${res.status} ${res.statusText}`);
-        if (data?.issues) console.error(JSON.stringify(data.issues, null, 2));
-        else console.error(data);
+        if (data?.issues) {
+          const rows = data.issues.map((i: any) => ({ path: i.path?.join?.(".") || "", message: i.message }));
+          console.table(rows);
+        } else console.error(data);
         process.exit(1);
       }
       console.log("deploy ok", data);
     } catch (err: any) {
       if (err.issues) {
+        const rows = err.issues.map((i: any) => ({ path: i.path?.join?.(".") || "", message: i.message }));
         console.error("Manifest validation failed:");
-        console.error(JSON.stringify(err.issues, null, 2));
+        console.table(rows);
       } else {
         console.error(err.message || err);
       }
